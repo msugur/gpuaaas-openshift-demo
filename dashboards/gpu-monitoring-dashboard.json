@@ -1,0 +1,70 @@
+{
+  "id": null,
+  "uid": "gpu-monitoring",
+  "title": "NVIDIA GPU Monitoring",
+  "tags": [
+    "gpu",
+    "nvidia",
+    "dcgm"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 26,
+  "version": 1,
+  "refresh": "10s",
+  "panels": [
+    {
+      "type": "graph",
+      "title": "GPU Utilization (%)",
+      "targets": [
+        {
+          "expr": "DCGM_FI_DEV_GPU_UTIL",
+          "legendFormat": "GPU {{pod}}",
+          "interval": ""
+        }
+      ],
+      "datasource": "Prometheus",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "graph",
+      "title": "Memory Usage (MiB)",
+      "targets": [
+        {
+          "expr": "DCGM_FI_DEV_FB_USED / 1024 / 1024",
+          "legendFormat": "GPU {{pod}}",
+          "interval": ""
+        }
+      ],
+      "datasource": "Prometheus",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "graph",
+      "title": "GPU Temperature (C)",
+      "targets": [
+        {
+          "expr": "DCGM_FI_DEV_GPU_TEMP",
+          "legendFormat": "GPU {{pod}}",
+          "interval": ""
+        }
+      ],
+      "datasource": "Prometheus",
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 24,
+        "h": 8
+      }
+    }
+  ]
+}
