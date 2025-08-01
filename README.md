@@ -1,166 +1,189 @@
-# 🎯 GPU-as-a-Service on OpenShift AI — Full Demo Runbook (Without Elyra)
 
-A complete GPUaaS demo on Red Hat OpenShift AI (RHODS) using NVIDIA V100 GPUs, MinIO, KServe with vLLM runtime, and GPU monitoring via Prometheus & Grafana.
+# GPU-as-a-Service (GPUaaS) on Red Hat OpenShift AI - Beginner-Friendly Implementation Runbook
 
----
-
-## 🧭 Prerequisites
-
-- OpenShift 4.15+
-- 2+ Worker nodes with NVIDIA V100 GPUs
-- RHODS Operator installed
-- `oc` CLI configured
-- Access to GPU-backed Workbench
+## Overview
+This runbook is designed for users **new to Kubernetes and GPU infrastructure**. It walks through deploying a complete GPUaaS demo on OpenShift AI with NVIDIA GPUs, model inferencing using KServe, object storage with MinIO, and GPU monitoring using Prometheus and Grafana.
 
 ---
 
-## 🔢 Step-by-Step Execution with Verification & Outputs
+## Prerequisites
+- OpenShift 4.15+ cluster with admin access
+- 2+ worker nodes with NVIDIA V100 GPUs
+- NVIDIA GPU Operator entitlement
+- RHODS (Red Hat OpenShift AI) installed
+- `oc` CLI tool configured
+- Basic Linux terminal knowledge
 
 ---
 
-### 🔧 Step 1: Install Node Feature Discovery (NFD)
+## STEP 1: Validate GPU Nodes
 
-Install **Node Feature Discovery Operator** from OperatorHub.
+**1.1 Check if nodes have GPUs:**
+```bash
+oc get nodes -l nvidia.com/gpu.present=true
+```
 
-Label your GPU node:
+**1.2 Inspect node GPU labels:**
+```bash
+oc describe node <gpu-node-name> | grep -i nvidia
+```
 
+---
+
+## STEP 2: Install Node Feature Discovery (NFD)
+
+**2.1 Install via OperatorHub:**
+- Navigate to Operators > OperatorHub
+- Search for **Node Feature Discovery**
+- Install in the default namespace
+
+**2.2 Label GPU nodes:**
 ```bash
 oc label node <gpu-node-name> feature.node.kubernetes.io/custom-gpu=true
 ```
 
-✅ **Verification**:
-```bash
-oc get nodes --show-labels | grep custom-gpu
-```
-
 ---
 
-### 🔌 Step 2: Install NVIDIA GPU Operator
+## STEP 3: Install NVIDIA GPU Operator
 
-Install **GPU Operator** in `nvidia-gpu-operator` namespace.
+**3.1 Install via OperatorHub:**
+- Search for **NVIDIA GPU Operator**
+- Create a new project: `nvidia-gpu-operator`
+- Approve installation
 
-✅ **Verification**:
+**3.2 Validate:**
 ```bash
 oc get pods -n nvidia-gpu-operator
-nvidia-driver-daemonset-*      Running
-nvidia-dcgm-exporter-*         Running
+```
+You should see pods like `nvidia-driver-daemonset` and `nvidia-dcgm-exporter`.
+
+---
+
+## STEP 4: Install MinIO (Object Storage)
+
+**4.1 Deploy MinIO open source manually:**
+```bash
+kubectl create namespace minio
+kubectl apply -f https://raw.githubusercontent.com/minio/minio/master/docs/orchestration/kubernetes/minio-standalone.yaml -n minio
 ```
 
----
+**4.2 Access MinIO Console:**
+- Route: `https://minio-minio.apps.<your-cluster-domain>`
+- Login with: `minioadmin:minioadmin`
 
-### ☁️ Step 3: Install MinIO (Open Source) & Create Bucket
-
-- Deploy MinIO via Helm or static manifests.
-- Console UI: `https://minio-minio.apps.<cluster-domain>`
-- Create a bucket: `onnx-models`
-- Upload your model file (e.g., `model.onnx`)
-
-✅ **Verify**:
-- Accessible at:
-  ```
-  https://minio-api-minio.apps.<cluster-domain>
-  ```
+**4.3 Create a bucket:**
+- Name: `onnx-models`
+- Upload your model: `model.onnx`
 
 ---
 
-### 🔐 Step 4: Create MinIO S3 Secret
+## STEP 5: Create S3 Secret for MinIO
 
 ```bash
-oc create secret generic s3storageconfig \
-  --from-literal=AWS_ACCESS_KEY_ID=minioadmin \
-  --from-literal=AWS_SECRET_ACCESS_KEY=minioadmin
-```
-
-✅ **Verify Secret**:
-```bash
-oc get secret s3storageconfig -o yaml
+oc create secret generic s3storageconfig   --from-literal=AWS_ACCESS_KEY_ID=minioadmin   --from-literal=AWS_SECRET_ACCESS_KEY=minioadmin -n gpu-dsp
 ```
 
 ---
 
-### 🧠 Step 5: Launch GPU Workbench (RHODS)
+## STEP 6: Launch GPU Workbench
 
-- Namespace: `gpu-dsp`
-- Environment: `cuda-py39` image
-- Allocate: 1 GPU, 8GiB RAM
+**6.1 Create a new project:**
+```bash
+oc new-project gpu-dsp
+```
 
-✅ Inside Jupyter:
-```python
+**6.2 Launch workbench via RHODS:**
+- Image: `cuda-py39` or similar
+- Resources: 1 GPU, 8GiB RAM, 2 CPUs
+- Enable GPU accelerator
+
+**6.3 Verify inside terminal:**
+```bash
 !nvidia-smi
 ```
 
 ---
 
-### 📈 Step 6: GPU Monitoring with Prometheus & Grafana
+## STEP 7: Deploy Inference Service with KServe
 
-1. Deploy `dcgm-exporter` as a DaemonSet
-2. Add `ServiceMonitor` and Grafana config
-3. Import dashboard JSON for DCGM metrics
+**7.1 Update YAML (inference-service-vllm.yaml):**
+```yaml
+spec:
+  predictor:
+    model:
+      modelFormat:
+        name: onnx
+      storage:
+        key: s3storageconfig
+        path: s3://onnx-models/model.onnx
+```
 
-✅ Key Metrics:
-- `DCGM_FI_DEV_GPU_UTIL`
-- `DCGM_FI_DEV_MEM_COPY_UTIL`
-
----
-
-### 🚀 Step 7: Deploy InferenceService using vLLM + KServe
-
-Use `inference-service-vllm.yaml` to deploy the ONNX model:
-
+**7.2 Apply YAML:**
 ```bash
-oc apply -f inference-service-vllm.yaml -n gpu-dsp
+oc apply -f yamls/inference-service-vllm.yaml -n gpu-dsp
 ```
 
-✅ **Expected Output**:
+**7.3 Validate:**
 ```bash
-NAME                URL                                                      READY
-onnx-model-vllm     https://onnx-model-vllm-gpu-dsp.apps.<domain>           True
+oc get inferenceservice -n gpu-dsp
 ```
 
-Test inference with:
+---
 
+## STEP 8: Send Inference Request
+
+**8.1 Use curl or Python:**
 ```bash
-curl -X POST <inference-url> -H "Content-Type: application/json" -d '{"inputs": [1.0, 2.0]}'
+curl -X POST   http://onnx-vllm-inference-gpu-dsp.apps.<cluster>/v1/models/onnx-vllm-inference:predict   -H "Content-Type: application/json"   -d @payloads/sample-inference-payload.json
 ```
 
 ---
 
-## 📂 Directory Layout
+## STEP 9: GPU Monitoring with Prometheus + Grafana
 
-```
-gpuaaas-openshift-demo/
-├── yamls/
-│   └── inference-service-vllm.yaml
-├── monitoring/
-│   ├── grafana-dashboards/
-│   └── dcgm-exporter/
-├── README.md
+**9.1 Apply monitoring stack:**
+```bash
+oc apply -f monitoring/gpu-monitoring-bundle.yaml -n gpu-dsp
 ```
 
----
-
-## ✅ Validation Checklist
-
-| Component                  | Status     |
-|---------------------------|------------|
-| NFD Installed             | ✅ Complete |
-| GPU Operator Running      | ✅ Complete |
-| MinIO Configured          | ✅ Complete |
-| S3 Secret Configured      | ✅ Complete |
-| GPU Workbench Launched    | ✅ Complete |
-| KServe Deployed           | ✅ Complete |
-| Inference Working         | ✅ Complete |
-| Monitoring Enabled        | ✅ Complete |
+**9.2 Access Grafana Dashboard:**
+- Route: OpenShift > Monitoring > Dashboards
+- Dashboard: NVIDIA GPU Monitoring
 
 ---
 
-## 📝 Next Enhancements
+## STEP 10: Validate All Components
 
-- Enable Tekton CI/CD Pipelines
-- Add MIG setup for A100 GPUs
-- Automate via ArgoCD or GitOps
-- Extend to multi-tenant GPUaaS
+Use `notebooks/final-validation-checks.ipynb` in your workbench to:
+- Verify GPU usage
+- Confirm model endpoints
+- Test inference
+- View GPU metrics
 
 ---
 
-© 2025 Red Hat | msugur@redhat.com
+## ✅ Success Checklist
+| Component             | Status     |
+|----------------------|------------|
+| GPU Nodes Recognized | ✅         |
+| NFD Installed        | ✅         |
+| GPU Operator Active  | ✅         |
+| MinIO Configured     | ✅         |
+| Inference Running    | ✅         |
+| Grafana Dashboards   | ✅         |
+
+---
+
+## 📝 Summary
+You have successfully deployed a GPU-as-a-Service architecture using:
+- OpenShift AI (RHODS)
+- NVIDIA GPU Operator
+- KServe with vLLM
+- Object storage (MinIO)
+- Monitoring (DCGM + Prometheus + Grafana)
+
+This setup supports further enhancements like Elyra pipelines, Tekton CI/CD, and MIG for NVIDIA A100s.
+
+---
+
+For support, contact: msugur@redhat.com
