@@ -1,0 +1,65 @@
+{
+  "pipelines": [
+    {
+      "id": "gpuaas-inference-pipeline",
+      "name": "GPUaaS Inference Pipeline",
+      "runtime": "kfp",
+      "runtime_config": "default",
+      "source": "gpuaas-inference-pipeline.pipeline",
+      "description": "A 4-step Elyra pipeline for GPUaaS with KServe",
+      "nodes": [
+        {
+          "id": "node1",
+          "type": "notebook",
+          "label": "Train Model",
+          "filename": "01_train_model.ipynb",
+          "outputs": [],
+          "inputs": [],
+          "runtime_image": "quay.io/opendatahub/workbench-images:cuda-py39",
+          "env_vars": [],
+          "dependencies": []
+        },
+        {
+          "id": "node2",
+          "type": "notebook",
+          "label": "Upload to MinIO",
+          "filename": "02_upload_to_minio.ipynb",
+          "inputs": [],
+          "outputs": [],
+          "runtime_image": "quay.io/opendatahub/workbench-images:cuda-py39",
+          "env_vars": [],
+          "dependencies": [
+            "node1"
+          ]
+        },
+        {
+          "id": "node3",
+          "type": "notebook",
+          "label": "Deploy InferenceService",
+          "filename": "03_deploy_kserve.ipynb",
+          "inputs": [],
+          "outputs": [],
+          "runtime_image": "quay.io/opendatahub/workbench-images:cuda-py39",
+          "env_vars": [],
+          "dependencies": [
+            "node2"
+          ]
+        },
+        {
+          "id": "node4",
+          "type": "notebook",
+          "label": "Test Inference",
+          "filename": "04_test_inference.ipynb",
+          "inputs": [],
+          "outputs": [],
+          "runtime_image": "quay.io/opendatahub/workbench-images:cuda-py39",
+          "env_vars": [],
+          "dependencies": [
+            "node3"
+          ]
+        }
+      ]
+    }
+  ],
+  "version": "3.0"
+}
