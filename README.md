@@ -1,6 +1,6 @@
-# 🎯 GPU-as-a-Service on OpenShift AI — Full Demo Runbook
+# 🎯 GPU-as-a-Service on OpenShift AI — Full Demo Runbook (Without Elyra)
 
-A complete end-to-end implementation of GPUaaS using Red Hat OpenShift AI (RHODS), NVIDIA V100 GPUs, MinIO, KServe with vLLM runtime, Elyra pipelines, and GPU monitoring via Prometheus & Grafana.
+A complete GPUaaS demo on Red Hat OpenShift AI (RHODS) using NVIDIA V100 GPUs, MinIO, KServe with vLLM runtime, and GPU monitoring via Prometheus & Grafana.
 
 ---
 
@@ -20,8 +20,9 @@ A complete end-to-end implementation of GPUaaS using Red Hat OpenShift AI (RHODS
 
 ### 🔧 Step 1: Install Node Feature Discovery (NFD)
 
-- Install `Node Feature Discovery Operator` from OperatorHub
-- Apply node label for GPU scheduling:
+Install **Node Feature Discovery Operator** from OperatorHub.
+
+Label your GPU node:
 
 ```bash
 oc label node <gpu-node-name> feature.node.kubernetes.io/custom-gpu=true
@@ -36,28 +37,26 @@ oc get nodes --show-labels | grep custom-gpu
 
 ### 🔌 Step 2: Install NVIDIA GPU Operator
 
-- Install `NVIDIA GPU Operator` via OperatorHub (namespace: `nvidia-gpu-operator`)
-- Ensure DaemonSet pods are running:
+Install **GPU Operator** in `nvidia-gpu-operator` namespace.
 
 ✅ **Verification**:
 ```bash
 oc get pods -n nvidia-gpu-operator
-nvidia-dcgm-exporter-xxxxx     Running
-nvidia-driver-daemonset-xxxxx  Running
+nvidia-driver-daemonset-*      Running
+nvidia-dcgm-exporter-*         Running
 ```
 
 ---
 
 ### ☁️ Step 3: Install MinIO (Open Source) & Create Bucket
 
-- Deploy using Helm or Operator (we used Helm)
-- Access UI: `https://minio-minio.apps.<cluster-domain>`
-- Create bucket: `onnx-models`
+- Deploy MinIO via Helm or static manifests.
+- Console UI: `https://minio-minio.apps.<cluster-domain>`
+- Create a bucket: `onnx-models`
+- Upload your model file (e.g., `model.onnx`)
 
-✅ **Verification**:
-- UI bucket visible
-- Upload test `.onnx` model
-- S3 endpoint:
+✅ **Verify**:
+- Accessible at:
   ```
   https://minio-api-minio.apps.<cluster-domain>
   ```
@@ -79,99 +78,88 @@ oc get secret s3storageconfig -o yaml
 
 ---
 
-### 🧠 Step 5: Launch GPU-backed Workbench in RHODS
+### 🧠 Step 5: Launch GPU Workbench (RHODS)
 
-- Project: `gpu-dsp`
-- Image: `cuda-py39`
-- Resources: 1 GPU, 8Gi RAM
-- Attached Elyra extension
+- Namespace: `gpu-dsp`
+- Environment: `cuda-py39` image
+- Allocate: 1 GPU, 8GiB RAM
 
-✅ **Notebook Ready**:
-- Elyra visible
-- GPU available via `nvidia-smi`
+✅ Inside Jupyter:
+```python
+!nvidia-smi
+```
 
 ---
 
-### 📦 Step 6: GPU Monitoring via DCGM + Prometheus + Grafana
+### 📈 Step 6: GPU Monitoring with Prometheus & Grafana
 
-- Deploy `dcgm-exporter` as DaemonSet
-- Add `ServiceMonitor` + Grafana datasource
-- Import `nvidia-dcgm-gpu-dashboard.json`
+1. Deploy `dcgm-exporter` as a DaemonSet
+2. Add `ServiceMonitor` and Grafana config
+3. Import dashboard JSON for DCGM metrics
 
-✅ **Sample Metrics**:
+✅ Key Metrics:
 - `DCGM_FI_DEV_GPU_UTIL`
 - `DCGM_FI_DEV_MEM_COPY_UTIL`
 
 ---
 
-### 🧪 Step 7: MLOps Pipeline with Elyra
+### 🚀 Step 7: Deploy InferenceService using vLLM + KServe
 
-Directory: `pipelines/elyra/`
+Use `inference-service-vllm.yaml` to deploy the ONNX model:
 
-- `01_train_model.ipynb`: Simulated ONNX model training
-- `02_upload_to_minio.ipynb`: Upload to `onnx-models` via boto3
-- `03_deploy_kserve.ipynb`: Apply `inference-service-vllm.yaml`
-- `04_test_inference.ipynb`: Run POST request on KServe URL
-
-✅ **Dry Run Outputs**:
-- ✅ Model trained or loaded
-- ✅ Model uploaded to MinIO
-- ✅ InferenceService applied via `oc`
-- ✅ HTTP inference returns:
-  ```json
-  {"predictions": [0.812]}
-  ```
-
----
-
-### 📡 Step 8: vLLM + KServe Deployment
-
-- Runtime: `kserve-onnxruntime`
-- ModelFormat: `onnx`
-- Access via:
-  ```
-  https://onnx-model-vllm-gpu-dsp.apps.<cluster-domain>
-  ```
-
-✅ **Verify Deployment**:
 ```bash
-oc get inferenceservice onnx-model-vllm -n gpu-dsp
+oc apply -f inference-service-vllm.yaml -n gpu-dsp
+```
+
+✅ **Expected Output**:
+```bash
+NAME                URL                                                      READY
+onnx-model-vllm     https://onnx-model-vllm-gpu-dsp.apps.<domain>           True
+```
+
+Test inference with:
+
+```bash
+curl -X POST <inference-url> -H "Content-Type: application/json" -d '{"inputs": [1.0, 2.0]}'
 ```
 
 ---
 
-## 📂 Directory Structure
+## 📂 Directory Layout
 
 ```
 gpuaaas-openshift-demo/
-├── pipelines/elyra/         # Elyra notebooks + pipeline
-├── monitoring/              # Dashboards and exporters
-├── yamls/                   # InferenceService and configs
-└── README.md
+├── yamls/
+│   └── inference-service-vllm.yaml
+├── monitoring/
+│   ├── grafana-dashboards/
+│   └── dcgm-exporter/
+├── README.md
 ```
 
 ---
 
-## 🧪 Validation Checklist
+## ✅ Validation Checklist
 
-| Item                          | Status     |
-|-------------------------------|------------|
-| OpenShift AI Installed        | ✅ Complete |
-| GPU Operator Running          | ✅ Complete |
-| MinIO Bucket Ready            | ✅ Complete |
-| GPU Workbench Functional      | ✅ Complete |
-| Elyra Pipeline Functional     | ✅ Complete |
-| InferenceService Available    | ✅ Complete |
-| GPU Dashboard in Grafana      | ✅ Complete |
+| Component                  | Status     |
+|---------------------------|------------|
+| NFD Installed             | ✅ Complete |
+| GPU Operator Running      | ✅ Complete |
+| MinIO Configured          | ✅ Complete |
+| S3 Secret Configured      | ✅ Complete |
+| GPU Workbench Launched    | ✅ Complete |
+| KServe Deployed           | ✅ Complete |
+| Inference Working         | ✅ Complete |
+| Monitoring Enabled        | ✅ Complete |
 
 ---
 
-## 📝 Next Steps
+## 📝 Next Enhancements
 
-- Add Tekton pipeline CI/CD
-- Integrate Seldon or BentoML
-- Enable autoscaling with Cluster Autoscaler
-- Monitor cost with Cost Operator and GPU labels
+- Enable Tekton CI/CD Pipelines
+- Add MIG setup for A100 GPUs
+- Automate via ArgoCD or GitOps
+- Extend to multi-tenant GPUaaS
 
 ---
 
